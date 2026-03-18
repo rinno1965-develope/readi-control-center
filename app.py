@@ -55,16 +55,34 @@ def decode_subject(raw):
 # -------------------------
 # LEGGI EMAIL
 # -------------------------
+import imaplib
+import email
+from email.header import decode_header
+
+IMAP_SERVER = "imap.gmx.com"
+EMAIL_ACCOUNT = "readi.controlcenter@gmx.com"
+EMAIL_PASSWORD = "Aibotix7805!"
+
+def decode_subject(raw):
+    parts = decode_header(raw)
+    result = ""
+    for part, enc in parts:
+        if isinstance(part, bytes):
+            result += part.decode(enc or "utf-8", errors="ignore")
+        else:
+            result += part
+    return result
+
 def get_latest_events():
     events = {}
 
     try:
-        mail = imaplib.IMAP4_SSL(IMAP_SERVER)
+        mail = imaplib.IMAP4_SSL(IMAP_SERVER, 993)
         mail.login(EMAIL_ACCOUNT, EMAIL_PASSWORD)
-        mail.select("inbox")
+        mail.select("INBOX")
 
         _, data = mail.search(None, "ALL")
-        ids = data[0].split()[-20:]  # ultime 20 mail
+        ids = data[0].split()[-20:]
 
         for num in reversed(ids):
             _, msg_data = mail.fetch(num, "(RFC822)")
