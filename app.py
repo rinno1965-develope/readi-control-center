@@ -30,7 +30,7 @@ if not st.session_state["logged"]:
     st.stop()
 
 # -------------------------
-# CONFIG GMX (METTI LE TUE)
+# CONFIG GMX
 # -------------------------
 IMAP_SERVER = "imap.gmx.com"
 EMAIL_ACCOUNT = "readi.controlcenter@gmx.com"
@@ -68,16 +68,45 @@ def decode_subject(raw):
     return result
 
 # -------------------------
-# PARSER SUBJECT (ROBUSTO)
+# PARSER INTELLIGENTE
 # -------------------------
-def clean_subject(subject):
+def parse_event(subject):
     s = subject.upper()
 
-    # pulizia spam / reply
+    # pulizia
     for junk in ["RE:", "FWD:", "[SPAM]", "[EXTERNAL]"]:
         s = s.replace(junk, "")
 
-    return s.strip()
+    s = s.strip()
+
+    # 🔥 TAKE OFF (varie forme)
+    if "TAKE OFF" in s or "TAKEOFF" in s:
+        event = "IN VOLO"
+    elif "LANDED" in s:
+        event = "A TERRA"
+    elif "NO GO" in s:
+        event = "NO GO"
+    else:
+        return None, None
+
+    # 🔥 TROVA DRONE
+    drone = None
+
+    # caso 1 → ALPHA NO GO VOLO
+    for d in DRONI:
+        if d in s:
+            drone = d
+
+    # caso 2 → "DRONE TAKE OFF, DELTA-DELTA"
+    if "," in s:
+        parts = s.split(",")
+        last = parts[-1].strip()
+
+        for d in DRONI:
+            if d in last:
+                drone = d
+
+    return drone, event
 
 # -------------------------
 # LETTURA EMAIL
@@ -90,36 +119,20 @@ def get_latest_events():
         mail.login(EMAIL_ACCOUNT, EMAIL_PASSWORD)
         mail.select("INBOX")
 
-        status, data = mail.search(None, "ALL")
-
-        if status != "OK":
-            st.error("Errore ricerca email")
-            return events
-
+        _, data = mail.search(None, "ALL")
         ids = data[0].split()[-20:]
-
-        st.write("📡 EMAIL TROVATE:", len(ids))
 
         for num in reversed(ids):
             _, msg_data = mail.fetch(num, "(RFC822)")
             msg = email.message_from_bytes(msg_data[0][1])
 
             subject_raw = decode_subject(msg["Subject"])
-            subject = clean_subject(subject_raw)
+            st.write("✉️", subject_raw)
 
-            st.write("✉️ SUBJECT:", subject)  # DEBUG
+            drone, event = parse_event(subject_raw)
 
-            for drone in DRONI:
-                if drone in subject:
-
-                    if "TAKEOFF" in subject:
-                        events[drone] = "IN VOLO"
-
-                    elif "LANDED" in subject:
-                        events[drone] = "A TERRA"
-
-                    elif "NO GO" in subject:
-                        events[drone] = "NO GO"
+            if drone and event:
+                events[drone] = event
 
         mail.logout()
 
@@ -136,7 +149,6 @@ st.title("🚁 ReADI Control Center")
 
 if st.button("🔄 Aggiorna stato"):
     st.session_state["events"] = get_latest_events()
-    st.session_state["last_update"] = datetime.now()
 
 events = st.session_state.get("events", {})
 
