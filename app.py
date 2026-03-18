@@ -175,53 +175,71 @@ def fetch_data():
                 if not msg_data or not msg_data[0]:
                     continue
 
-                msg = email.message_from_bytes(msg_data[0][1])
+try:
+    raw_email = msg_data[0][1]
 
-                # 🔥 SUBJECT SAFE
-                raw_subj = msg.get("Subject", "")
-                subj = decode_subject(raw_subj) if raw_subj else ""
+    if not raw_email:
+        continue
 
-                if not subj:
-                    continue
+    msg = email.message_from_bytes(raw_email)
 
-                # 🔥 NOTAM
-                if "notam" in subj.lower():
-                    notam_list.append(subj)
+    # 🔥 SUBJECT SAFE HARD
+    raw_subj = msg.get("Subject")
 
-                parsed = parse_subject(subj)
-                if not parsed:
-                    continue
+    if raw_subj is None:
+        continue
 
-                drone, event = parsed
+    try:
+        subj = decode_subject(raw_subj)
+    except:
+        continue
 
-                # 🔥 DATE SAFE (QUI ERA IL PROBLEMA)
-                dt = None
-                try:
-                    dt = parse_date(msg)
-                except:
-                    dt = None
+    if not subj:
+        continue
 
-                t = dt.strftime("%H:%M:%S") if dt else "--:--"
+    # 🔥 PARSE EVENTO
+    parsed = parse_subject(subj)
+    if not parsed:
+        continue
 
-                # 🔥 LOGICA EVENTI
-                if event == "TAKEOFF":
-                    model[drone]["state"] = "IN_VOLO"
-                    model[drone]["last"] = f"{t} TAKEOFF"
-                    model[drone]["start"] = dt
+    drone, event = parsed
 
-                elif event == "LANDED":
-                    model[drone]["state"] = "A_TERRA"
-                    model[drone]["last"] = f"{t} LANDED"
-                    model[drone]["start"] = None
+    # 🔥 DATE ULTRA SAFE (NO FUNZIONE ESTERNA)
+    dt = None
+    try:
+        raw_date = msg.get("Date")
 
-                elif event == "NO_GO":
-                    model[drone]["state"] = "NO_GO"
-                    model[drone]["last"] = f"{t} NO GO"
-                    model[drone]["start"] = None
+        if raw_date:
+            raw_date = str(raw_date).replace(" (UTC)", "").strip()
 
-            except Exception:
-                # 🔥 QUI SALVIAMO LA VITA
-                continue
+            tmp = parsedate_to_datetime(raw_date)
+
+            if tmp and tmp.tzinfo:
+                dt = tmp.astimezone()
+
+    except:
+        dt = None
+
+    t = dt.strftime("%H:%M:%S") if dt else "--:--"
+
+    # 🔥 LOGICA
+    if event == "TAKEOFF":
+        model[drone]["state"] = "IN_VOLO"
+        model[drone]["last"] = f"{t} TAKEOFF"
+        model[drone]["start"] = dt
+
+    elif event == "LANDED":
+        model[drone]["state"] = "A_TERRA"
+        model[drone]["last"] = f"{t} LANDED"
+        model[drone]["start"] = None
+
+    elif event == "NO_GO":
+        model[drone]["state"] = "NO_GO"
+        model[drone]["last"] = f"{t} NO GO"
+        model[drone]["start"] = None
+
+except Exception:
+    continue
 
         mail.logout()
 
