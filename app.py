@@ -267,14 +267,16 @@ def fetch_control_center_data(cfg: dict):
             msg_dt = None
            msg_dt = None
 
+msg_dt = None
+
 try:
     msg_dt = parsedate_to_datetime(msg.get("Date"))
 
-    if msg_dt.tzinfo is None:
+    if msg_dt and msg_dt.tzinfo is None:
         msg_dt = msg_dt.replace(tzinfo=timezone.utc)
 
-    # 🔥 FIX ORARIO ITALIA
-    msg_dt = msg_dt.astimezone()
+    if msg_dt:
+        msg_dt = msg_dt.astimezone()
 
 except Exception:
     msg_dt = None
