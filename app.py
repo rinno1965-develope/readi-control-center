@@ -32,17 +32,28 @@ def read_mail():
         _, messages = mail.search(None, "ALL")
         ids = messages[0].split()[-10:]
 
-        drones = []
+drones_dict = {}
 
-        for i in ids:
-            _, msg_data = mail.fetch(i, "(RFC822)")
-            msg = email.message_from_bytes(msg_data[0][1])
-            subject = decode_subject(msg["Subject"])
+for i in ids:
+    _, msg_data = mail.fetch(i, "(RFC822)")
+    msg = email.message_from_bytes(msg_data[0][1])
+    subject = decode_subject(msg["Subject"])
 
-            if "ALPHA" in subject:
-                drones.append({"Drone": "ALPHA", "Stato": "Online", "Batteria": "78%"})
-            if "BRAVO" in subject:
-                drones.append({"Drone": "BRAVO", "Stato": "Standby", "Batteria": "55%"})
+    if "ALPHA" in subject:
+        drones_dict["ALPHA"] = {
+            "Drone": "ALPHA",
+            "Stato": "Online",
+            "Batteria": "78%"
+        }
+
+    if "BRAVO" in subject:
+        drones_dict["BRAVO"] = {
+            "Drone": "BRAVO",
+            "Stato": "Standby",
+            "Batteria": "55%"
+        }
+
+drones = list(drones_dict.values())
 
         return drones
 
