@@ -105,21 +105,28 @@ def parse_subject(subject):
 
 # 🔥 FIX DEFINITIVO (mai più replace su None)
 def parse_date(msg):
+    raw = msg.get("Date")
+
+    if not raw:
+        return None
+
     try:
-        raw = msg.get("Date")
-        if not raw:
-            return None
+        # 🔥 NORMALIZZA STRINGA (FIX GMX)
+        raw = str(raw).replace(" (UTC)", "").strip()
 
+        # 🔥 PARSE MANUALE SAFE
         dt = parsedate_to_datetime(raw)
-        if not dt:
+
+        if dt is None:
             return None
 
+        # 🔥 PROTEZIONE TOTALE
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+            return None  # ← invece di replace, skip
 
         return dt.astimezone()
 
-    except:
+    except Exception:
         return None
 
 
