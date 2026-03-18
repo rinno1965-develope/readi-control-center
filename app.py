@@ -5,21 +5,11 @@ import email
 from email.header import decode_header
 
 # -------------------------
-# CONFIG LOGIN
+# LOGIN
 # -------------------------
 USERNAME = "admin"
 PASSWORD = "readi123"
 
-# -------------------------
-# CONFIG MAIL (METTI I TUOI)
-# -------------------------
-IMAP_SERVER = "imap.gmail.com"
-EMAIL_ACCOUNT = "TUA_MAIL"
-EMAIL_PASSWORD = "TUA_PASSWORD"
-
-# -------------------------
-# LOGIN
-# -------------------------
 def login():
     st.title("🔐 Accesso ReADI Control Center")
     user = st.text_input("Username")
@@ -40,71 +30,11 @@ if not st.session_state["logged"]:
     st.stop()
 
 # -------------------------
-# DECODE SUBJECT
+# CONFIG GMX (METTI LE TUE)
 # -------------------------
-def decode_subject(raw):
-    parts = decode_header(raw)
-    result = ""
-    for part, enc in parts:
-        if isinstance(part, bytes):
-            result += part.decode(enc or "utf-8", errors="ignore")
-        else:
-            result += part
-    return result
-
-# -------------------------
-# LEGGI EMAIL
-# -------------------------
-import imaplib
-import email
-from email.header import decode_header
-
 IMAP_SERVER = "imap.gmx.com"
 EMAIL_ACCOUNT = "readi.controlcenter@gmx.com"
 EMAIL_PASSWORD = "Aibotix7805!"
-
-def decode_subject(raw):
-    parts = decode_header(raw)
-    result = ""
-    for part, enc in parts:
-        if isinstance(part, bytes):
-            result += part.decode(enc or "utf-8", errors="ignore")
-        else:
-            result += part
-    return result
-
-def get_latest_events():
-    events = {}
-
-    try:
-        mail = imaplib.IMAP4_SSL(IMAP_SERVER, 993)
-        mail.login(EMAIL_ACCOUNT, EMAIL_PASSWORD)
-        mail.select("INBOX")
-
-        _, data = mail.search(None, "ALL")
-        ids = data[0].split()[-20:]
-
-        for num in reversed(ids):
-            _, msg_data = mail.fetch(num, "(RFC822)")
-            msg = email.message_from_bytes(msg_data[0][1])
-
-            subject = decode_subject(msg["Subject"]).upper()
-
-            for drone in DRONI:
-                if drone in subject:
-                    if "TAKEOFF" in subject:
-                        events[drone] = "IN VOLO"
-                    elif "LANDED" in subject:
-                        events[drone] = "A TERRA"
-                    elif "NO GO" in subject:
-                        events[drone] = "NO GO"
-
-        mail.logout()
-
-    except Exception as e:
-        st.error(f"Errore IMAP: {e}")
-
-    return events
 
 # -------------------------
 # DRONI
@@ -125,15 +55,86 @@ def get_color(stato):
     }.get(stato, "#999")
 
 # -------------------------
-# REFRESH
+# DECODE SUBJECT
 # -------------------------
-if "last_update" not in st.session_state:
-    st.session_state["last_update"] = None
+def decode_subject(raw):
+    parts = decode_header(raw)
+    result = ""
+    for part, enc in parts:
+        if isinstance(part, bytes):
+            result += part.decode(enc or "utf-8", errors="ignore")
+        else:
+            result += part
+    return result
 
+# -------------------------
+# PARSER SUBJECT (ROBUSTO)
+# -------------------------
+def clean_subject(subject):
+    s = subject.upper()
+
+    # pulizia spam / reply
+    for junk in ["RE:", "FWD:", "[SPAM]", "[EXTERNAL]"]:
+        s = s.replace(junk, "")
+
+    return s.strip()
+
+# -------------------------
+# LETTURA EMAIL
+# -------------------------
+def get_latest_events():
+    events = {}
+
+    try:
+        mail = imaplib.IMAP4_SSL(IMAP_SERVER, 993)
+        mail.login(EMAIL_ACCOUNT, EMAIL_PASSWORD)
+        mail.select("INBOX")
+
+        status, data = mail.search(None, "ALL")
+
+        if status != "OK":
+            st.error("Errore ricerca email")
+            return events
+
+        ids = data[0].split()[-20:]
+
+        st.write("📡 EMAIL TROVATE:", len(ids))
+
+        for num in reversed(ids):
+            _, msg_data = mail.fetch(num, "(RFC822)")
+            msg = email.message_from_bytes(msg_data[0][1])
+
+            subject_raw = decode_subject(msg["Subject"])
+            subject = clean_subject(subject_raw)
+
+            st.write("✉️ SUBJECT:", subject)  # DEBUG
+
+            for drone in DRONI:
+                if drone in subject:
+
+                    if "TAKEOFF" in subject:
+                        events[drone] = "IN VOLO"
+
+                    elif "LANDED" in subject:
+                        events[drone] = "A TERRA"
+
+                    elif "NO GO" in subject:
+                        events[drone] = "NO GO"
+
+        mail.logout()
+
+    except Exception as e:
+        st.error(f"❌ ERRORE IMAP: {e}")
+
+    return events
+
+# -------------------------
+# UI
+# -------------------------
 st.set_page_config(layout="wide")
 st.title("🚁 ReADI Control Center")
 
-if st.button("🔄 Aggiorna"):
+if st.button("🔄 Aggiorna stato"):
     st.session_state["events"] = get_latest_events()
     st.session_state["last_update"] = datetime.now()
 
