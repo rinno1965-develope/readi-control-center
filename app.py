@@ -51,7 +51,7 @@ ALIASES = cfg["aliases"]
 DRONI = list(ALIASES.keys())
 
 # =========================
-# REGEX
+# REGEX EVENTI
 # =========================
 TAKEOFF_RE = re.compile(r"(take\s*off|takeoff)", re.IGNORECASE)
 LANDED_RE = re.compile(r"(landed|landing)", re.IGNORECASE)
@@ -59,7 +59,7 @@ NOGO_RE = re.compile(r"(no\s*go\s*volo)", re.IGNORECASE)
 GOVOLO_RE = re.compile(r"(go\s*volo)", re.IGNORECASE)
 
 # =========================
-# UTILS
+# UTILS SICURI
 # =========================
 def decode_subject(s):
     if not s:
@@ -67,10 +67,13 @@ def decode_subject(s):
     parts = decode_header(s)
     out = ""
     for p, enc in parts:
-        if isinstance(p, bytes):
-            out += p.decode(enc or "utf-8", errors="ignore")
-        else:
-            out += p
+        try:
+            if isinstance(p, bytes):
+                out += p.decode(enc or "utf-8", errors="ignore")
+            else:
+                out += p
+        except:
+            pass
     return out
 
 def parse_subject(subject):
@@ -96,6 +99,7 @@ def parse_subject(subject):
 
 def parse_date(msg):
     raw = msg.get("Date")
+
     if not raw:
         return None
 
@@ -104,36 +108,48 @@ def parse_date(msg):
     except:
         return None
 
-    if not dt:
+    if dt is None:
         return None
 
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+    try:
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
 
-    return dt.astimezone()
+        return dt.astimezone()
+    except:
+        return None
 
 def timer(start):
     if not start:
         return "--"
-    sec = int((datetime.now(timezone.utc) - start).total_seconds())
-    return f"{sec//60:02d}:{sec%60:02d}"
+    try:
+        sec = int((datetime.now(timezone.utc) - start).total_seconds())
+        return f"{sec//60:02d}:{sec%60:02d}"
+    except:
+        return "--"
 
 def color(s):
-    return "#ff3b3b" if s=="IN_VOLO" else "#f7c948" if s=="NO_GO" else "#39d98a"
+    if s == "IN_VOLO":
+        return "#ff3b3b"
+    elif s == "NO_GO":
+        return "#f7c948"
+    else:
+        return "#39d98a"
 
 # =========================
-# FETCH MAIL
+# FETCH MAIL (ULTRA SAFE)
 # =========================
 def fetch_data():
     model = {
-        d: {
-            "state": "A_TERRA",
-            "last": "—",
-            "start": None
-        } for d in DRONI
+        d: {"state": "A_TERRA", "last": "—", "start": None}
+        for d in DRONI
     }
 
     try:
+        if not EMAIL_USER or not EMAIL_PASS:
+            st.error("Credenziali email mancanti (ENV)")
+            return model
+
         mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
         mail.login(EMAIL_USER, EMAIL_PASS)
         mail.select("INBOX")
@@ -142,34 +158,38 @@ def fetch_data():
         ids = data[0].split()[-200:]
 
         for num in ids:
-            _, msg_data = mail.fetch(num, "(RFC822)")
-            msg = email.message_from_bytes(msg_data[0][1])
+            try:
+                _, msg_data = mail.fetch(num, "(RFC822)")
+                msg = email.message_from_bytes(msg_data[0][1])
 
-            subj = decode_subject(msg.get("Subject", ""))
-            parsed = parse_subject(subj)
+                subj = decode_subject(msg.get("Subject", ""))
+                parsed = parse_subject(subj)
 
-            if not parsed:
+                if not parsed:
+                    continue
+
+                drone, event = parsed
+                dt = parse_date(msg)
+
+                t = dt.strftime("%H:%M:%S") if dt else "--:--"
+
+                if event == "TAKEOFF":
+                    model[drone]["state"] = "IN_VOLO"
+                    model[drone]["last"] = f"{t} TAKEOFF"
+                    model[drone]["start"] = dt
+
+                elif event == "LANDED":
+                    model[drone]["state"] = "A_TERRA"
+                    model[drone]["last"] = f"{t} LANDED"
+                    model[drone]["start"] = None
+
+                elif event == "NO_GO":
+                    model[drone]["state"] = "NO_GO"
+                    model[drone]["last"] = f"{t} NO GO"
+                    model[drone]["start"] = None
+
+            except:
                 continue
-
-            drone, event = parsed
-            dt = parse_date(msg)
-
-            t = dt.strftime("%H:%M:%S") if dt else "--:--"
-
-            if event == "TAKEOFF":
-                model[drone]["state"] = "IN_VOLO"
-                model[drone]["last"] = f"{t} TAKEOFF"
-                model[drone]["start"] = dt
-
-            elif event == "LANDED":
-                model[drone]["state"] = "A_TERRA"
-                model[drone]["last"] = f"{t} LANDED"
-                model[drone]["start"] = None
-
-            elif event == "NO_GO":
-                model[drone]["state"] = "NO_GO"
-                model[drone]["last"] = f"{t} NO GO"
-                model[drone]["start"] = None
 
         mail.logout()
 
@@ -199,7 +219,7 @@ if "data" not in st.session_state:
 data = st.session_state["data"]
 
 # =========================
-# CARDS
+# GRID
 # =========================
 html = ""
 
