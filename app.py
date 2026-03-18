@@ -3,16 +3,17 @@ import streamlit as st
 st.set_page_config(page_title="ReADI Control Center", layout="wide")
 
 # Login semplice con credenziali prese dai secrets
+USERNAME = "admin"
+PASSWORD = "readi123"
+
 def login():
     st.title("🔐 Accesso ReADI Control Center")
+
     user = st.text_input("Username")
     pwd = st.text_input("Password", type="password")
 
     if st.button("Login"):
-        if (
-            user == st.secrets["auth"]["admin"]
-            and pwd == st.secrets["auth"]["123"]
-        ):
+        if user == USERNAME and pwd == PASSWORD:
             st.session_state["logged"] = True
             st.rerun()
         else:
