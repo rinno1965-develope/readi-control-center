@@ -25,36 +25,35 @@ def decode_subject(raw):
 
 def read_mail():
     try:
-        mail = imaplib.IMAP4_SSL("imap.gmx.com")
-        mail.login("readi.controlcenter@gmx.com", "Aibotix7805!")
+        mail = imaplib.IMAP4_SSL("imap.gmail.com")
+        mail.login(EMAIL, PASSWORD)
         mail.select("inbox")
 
-        _, messages = mail.search(None, "ALL")
+        status, messages = mail.search(None, "ALL")
         ids = messages[0].split()[-10:]
 
-drones_dict = {}
+        drones_dict = {}
 
-for i in ids:
-    _, msg_data = mail.fetch(i, "(RFC822)")
-    msg = email.message_from_bytes(msg_data[0][1])
-    subject = decode_subject(msg["Subject"])
+        for i in ids:
+            _, msg_data = mail.fetch(i, "(RFC822)")
+            msg = email.message_from_bytes(msg_data[0][1])
+            subject = decode_subject(msg["Subject"])
 
-    if "ALPHA" in subject:
-        drones_dict["ALPHA"] = {
-            "Drone": "ALPHA",
-            "Stato": "Online",
-            "Batteria": "78%"
-        }
+            if "ALPHA" in subject:
+                drones_dict["ALPHA"] = {
+                    "Drone": "ALPHA",
+                    "Stato": "Online",
+                    "Batteria": "78%"
+                }
 
-    if "BRAVO" in subject:
-        drones_dict["BRAVO"] = {
-            "Drone": "BRAVO",
-            "Stato": "Standby",
-            "Batteria": "55%"
-        }
+            if "BRAVO" in subject:
+                drones_dict["BRAVO"] = {
+                    "Drone": "BRAVO",
+                    "Stato": "Standby",
+                    "Batteria": "55%"
+                }
 
-drones = list(drones_dict.values())
-
+        drones = list(drones_dict.values())
         return drones
 
     except:
