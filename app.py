@@ -3,6 +3,7 @@ import os
 import re
 import imaplib
 import email
+import email.message
 from email.header import decode_header
 from email.utils import parsedate_to_datetime
 from datetime import datetime, timezone
@@ -10,11 +11,13 @@ from datetime import datetime, timezone
 import streamlit as st
 import streamlit.components.v1 as components
 
+
 # =========================
-# LOGIN
+# LOGIN PANNELLO
 # =========================
 USERNAME = "admin"
 PASSWORD = "readi123"
+
 
 def login():
     st.title("🔐 Accesso ReADI Control Center")
@@ -28,6 +31,7 @@ def login():
         else:
             st.error("Credenziali errate")
 
+
 if "logged" not in st.session_state:
     st.session_state["logged"] = False
 
@@ -35,238 +39,467 @@ if not st.session_state["logged"]:
     login()
     st.stop()
 
+
 # =========================
 # CONFIG
 # =========================
-with open("config.json", "r", encoding="utf-8") as f:
-    cfg = json.load(f)
+CONFIG_FILE = "config.json"
 
-IMAP_SERVER = cfg["imap"]["server"]
-IMAP_PORT = cfg["imap"]["port"]
 
-EMAIL_USER = os.environ.get("READI_IMAP_USER")
-EMAIL_PASS = os.environ.get("READI_IMAP_PASS")
+def safe_load_json(path: str) -> dict:
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
 
-ALIASES = cfg["aliases"]
-DRONI = list(ALIASES.keys())
+
+def ensure_config_has_keys(cfg: dict):
+    if "imap" not in cfg:
+        raise ValueError("config.json: manca la sezione 'imap'")
+
+    for k in ("server", "port"):
+        if k not in cfg["imap"]:
+            raise ValueError(f"config.json: imap.{k} mancante")
+
+    # credenziali da env
+    cfg["imap"]["email_user"] = cfg["imap"].get("email_user") or os.environ.get("READI_IMAP_USER", "")
+    cfg["imap"]["email_pass"] = cfg["imap"].get("email_pass") or os.environ.get("READI_IMAP_PASS", "")
+
+    if not cfg["imap"]["email_user"] or not cfg["imap"]["email_pass"]:
+        raise ValueError(
+            "Credenziali IMAP mancanti. Imposta READI_IMAP_USER e READI_IMAP_PASS."
+        )
+
 
 # =========================
-# REGEX EVENTI
+# PARSER (preso dal cervello buono)
 # =========================
-TAKEOFF_RE = re.compile(r"(take\s*off|takeoff)", re.IGNORECASE)
-LANDED_RE = re.compile(r"(landed|landing)", re.IGNORECASE)
-NOGO_RE = re.compile(r"(no\s*go\s*volo)", re.IGNORECASE)
-GOVOLO_RE = re.compile(r"(go\s*volo)", re.IGNORECASE)
+TAKEOFF_RE = re.compile(r"\b(take\s*off|takeoff|taken\s*off)\b", re.IGNORECASE)
+LANDED_RE = re.compile(r"\b(landed|landing)\b", re.IGNORECASE)
+NOGO_RE = re.compile(r"\bno\s*go\s*volo\b", re.IGNORECASE)
+GOVOLO_RE = re.compile(r"\bgo\s*volo\b", re.IGNORECASE)
 
-# =========================
-# UTILS SICURI
-# =========================
-def decode_subject(s):
-    if not s:
+
+def decode_subject(raw_subj: str) -> str:
+    if not raw_subj:
         return ""
-    parts = decode_header(s)
+    parts = decode_header(raw_subj)
     out = ""
-    for p, enc in parts:
-        try:
-            if isinstance(p, bytes):
-                out += p.decode(enc or "utf-8", errors="ignore")
-            else:
-                out += p
-        except:
-            pass
-    return out
+    for part, enc in parts:
+        if isinstance(part, bytes):
+            out += part.decode(enc or "utf-8", errors="ignore")
+        else:
+            out += part
+    return out.strip()
 
-def parse_subject(subject):
-    s = subject.lower()
 
-    if NOGO_RE.search(s):
+def is_notam_subject(subject: str) -> bool:
+    s = (subject or "").strip()
+    return s.upper().startswith("NOTAM")
+
+
+def get_text_body(msg: email.message.Message) -> str:
+    if msg.is_multipart():
+        for part in msg.walk():
+            ctype = (part.get_content_type() or "").lower()
+            disp = str(part.get("Content-Disposition") or "").lower()
+            if ctype == "text/plain" and "attachment" not in disp:
+                payload = part.get_payload(decode=True) or b""
+                charset = part.get_content_charset() or "utf-8"
+                return payload.decode(charset, errors="replace").strip()
+
+        for part in msg.walk():
+            ctype = (part.get_content_type() or "").lower()
+            if ctype.startswith("text/"):
+                payload = part.get_payload(decode=True) or b""
+                charset = part.get_content_charset() or "utf-8"
+                return payload.decode(charset, errors="replace").strip()
+
+        return ""
+
+    payload = msg.get_payload(decode=True) or b""
+    charset = msg.get_content_charset() or "utf-8"
+    return payload.decode(charset, errors="replace").strip()
+
+
+def clean_body(text: str) -> str:
+    t = (text or "").replace("\r\n", "\n")
+    for sep in ["\nOn ", "\nIl ", "\nDa: ", "\nFrom: "]:
+        if sep in t:
+            t = t.split(sep, 1)[0]
+    return t.strip()
+
+
+def parse_subject(subject: str, aliases: dict):
+    """
+    Return: (drone, event, reason)
+    event: TAKEOFF | LANDED | NO_GO | GO
+    """
+    s = (subject or "").strip()
+    s_low = s.lower()
+
+    event = None
+    reason = ""
+
+    if NOGO_RE.search(s_low):
         event = "NO_GO"
-    elif GOVOLO_RE.search(s):
+        idx = s_low.find("no go volo")
+        tail = s[idx:] if idx >= 0 else s
+        if ":" in tail:
+            reason = tail.split(":", 1)[1].strip()
+        else:
+            reason = tail.replace("NO GO VOLO", "").replace("no go volo", "").strip(" -:").strip()
+
+    elif GOVOLO_RE.search(s_low):
         event = "GO"
-    elif TAKEOFF_RE.search(s):
+
+    elif TAKEOFF_RE.search(s_low):
         event = "TAKEOFF"
-    elif LANDED_RE.search(s):
+
+    elif LANDED_RE.search(s_low):
         event = "LANDED"
+
     else:
         return None
 
-    for drone, aliases in ALIASES.items():
-        for a in aliases:
-            if a.lower() in s:
-                return drone, event
+    for drone_name, alias_list in (aliases or {}).items():
+        for alias in (alias_list or []):
+            if not alias:
+                continue
+            if str(alias).lower() in s_low:
+                return drone_name, event, reason
 
     return None
 
-def parse_date(msg):
-    raw = msg.get("Date")
 
-    if not raw:
-        return None
-
+# =========================
+# HELPERS UI
+# =========================
+def format_dt_for_card(dt_obj):
+    if not dt_obj:
+        return "—"
     try:
-        dt = parsedate_to_datetime(raw)
-    except:
-        return None
+        return dt_obj.astimezone().strftime("%H:%M:%S")
+    except Exception:
+        return "—"
 
-    if dt is None:
-        return None
 
+def format_dt_for_table(dt_obj):
+    if not dt_obj:
+        return ""
     try:
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+        return dt_obj.astimezone().strftime("%d/%m %H:%M:%S")
+    except Exception:
+        return ""
 
-        return dt.astimezone()
-    except:
-        return None
 
-def timer(start):
-    if not start:
-        return "--"
+def compute_timer(start_dt):
+    if not start_dt:
+        return "—"
     try:
-        sec = int((datetime.now(timezone.utc) - start).total_seconds())
-        return f"{sec//60:02d}:{sec%60:02d}"
-    except:
-        return "--"
+        now = datetime.now(timezone.utc)
+        delta = now - start_dt.astimezone(timezone.utc)
+        sec = max(0, int(delta.total_seconds()))
+        mm = sec // 60
+        ss = sec % 60
+        return f"{mm:02d}:{ss:02d}"
+    except Exception:
+        return "—"
 
-def color(s):
-    if s == "IN_VOLO":
+
+def border_color(state):
+    if state == "IN_VOLO":
         return "#ff3b3b"
-    elif s == "NO_GO":
+    if state == "NO_GO":
         return "#f7c948"
-    else:
-        return "#39d98a"
+    return "#39d98a"
+
+
+def status_label(state):
+    if state == "IN_VOLO":
+        return "IN VOLO"
+    if state == "NO_GO":
+        return "NO GO"
+    return "A TERRA"
+
 
 # =========================
-# FETCH MAIL (ULTRA SAFE)
+# IMAP FETCH
 # =========================
-def fetch_data():
+def fetch_control_center_data(cfg: dict):
+    imap_cfg = cfg["imap"]
+    aliases = cfg.get("aliases", {})
+    display_order = list(aliases.keys())
+
     model = {
-        d: {"state": "A_TERRA", "last": "—", "start": None}
-        for d in DRONI
+        name: {
+            "state": "A_TERRA",
+            "last_event_text": "—",
+            "event_dt": None,
+            "timer_start_dt": None,
+        }
+        for name in display_order
     }
 
-    try:
-        if not EMAIL_USER or not EMAIL_PASS:
-            st.error("Credenziali email mancanti (ENV)")
-            return model
+    notams = []
+    connected = False
+    error_msg = ""
 
-        mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
-        mail.login(EMAIL_USER, EMAIL_PASS)
+    try:
+        mail = imaplib.IMAP4_SSL(imap_cfg["server"], int(imap_cfg.get("port", 993)))
+        mail.login(imap_cfg["email_user"], imap_cfg["email_pass"])
+        connected = True
         mail.select("INBOX")
 
-        _, data = mail.search(None, "ALL")
-        ids = data[0].split()[-200:]
+        status, data = mail.search(None, "ALL")
+        if status != "OK" or not data or not data[0]:
+            return model, notams, connected, "Nessuna mail trovata."
+
+        tail_uids = int(cfg.get("tail_uids", 300))
+        ids = data[0].split()[-tail_uids:]
 
         for num in ids:
-            try:
-                _, msg_data = mail.fetch(num, "(RFC822)")
-                msg = email.message_from_bytes(msg_data[0][1])
-
-                subj = decode_subject(msg.get("Subject", ""))
-                parsed = parse_subject(subj)
-
-                if not parsed:
-                    continue
-
-                drone, event = parsed
-                dt = parse_date(msg)
-
-                t = dt.strftime("%H:%M:%S") if dt else "--:--"
-
-                if event == "TAKEOFF":
-                    model[drone]["state"] = "IN_VOLO"
-                    model[drone]["last"] = f"{t} TAKEOFF"
-                    model[drone]["start"] = dt
-
-                elif event == "LANDED":
-                    model[drone]["state"] = "A_TERRA"
-                    model[drone]["last"] = f"{t} LANDED"
-                    model[drone]["start"] = None
-
-                elif event == "NO_GO":
-                    model[drone]["state"] = "NO_GO"
-                    model[drone]["last"] = f"{t} NO GO"
-                    model[drone]["start"] = None
-
-            except:
+            status, msg_data = mail.fetch(num, "(RFC822)")
+            if status != "OK" or not msg_data or not msg_data[0]:
                 continue
 
-        mail.logout()
+            msg = email.message_from_bytes(msg_data[0][1])
+            subj = decode_subject(msg.get("Subject", ""))
+
+            msg_dt = None
+            try:
+                msg_dt = parsedate_to_datetime(msg.get("Date"))
+                if msg_dt.tzinfo is None:
+                    msg_dt = msg_dt.replace(tzinfo=timezone.utc)
+            except Exception:
+                msg_dt = None
+
+            if is_notam_subject(subj):
+                body = clean_body(get_text_body(msg))
+                sender = decode_subject(msg.get("From", ""))
+                notams.append({
+                    "Data/Ora": format_dt_for_table(msg_dt),
+                    "PIC": sender,
+                    "Messaggio": body if body else subj,
+                })
+                continue
+
+            parsed = parse_subject(subj, aliases)
+            if not parsed:
+                continue
+
+            drone, event, reason = parsed
+
+            if drone not in model:
+                model[drone] = {
+                    "state": "A_TERRA",
+                    "last_event_text": "—",
+                    "event_dt": None,
+                    "timer_start_dt": None,
+                }
+
+            hhmmss = format_dt_for_card(msg_dt)
+
+            if event == "TAKEOFF":
+                model[drone]["state"] = "IN_VOLO"
+                model[drone]["last_event_text"] = f"{hhmmss} — TAKEOFF"
+                model[drone]["event_dt"] = msg_dt
+                model[drone]["timer_start_dt"] = msg_dt
+
+            elif event == "LANDED":
+                model[drone]["state"] = "A_TERRA"
+                model[drone]["last_event_text"] = f"{hhmmss} — LANDED"
+                model[drone]["event_dt"] = msg_dt
+                model[drone]["timer_start_dt"] = None
+
+            elif event == "NO_GO":
+                model[drone]["state"] = "NO_GO"
+                model[drone]["event_dt"] = msg_dt
+                model[drone]["timer_start_dt"] = None
+                if reason:
+                    model[drone]["last_event_text"] = f"{hhmmss} — {reason}"
+                else:
+                    model[drone]["last_event_text"] = f"{hhmmss} — NO GO"
+
+            elif event == "GO":
+                model[drone]["state"] = "A_TERRA"
+                model[drone]["last_event_text"] = f"{hhmmss} — GO VOLO"
+                model[drone]["event_dt"] = msg_dt
+                model[drone]["timer_start_dt"] = None
+
+        try:
+            mail.logout()
+        except Exception:
+            pass
 
     except Exception as e:
-        st.error(f"Errore IMAP: {e}")
+        error_msg = str(e)
 
-    return model
+    notams = sorted(notams, key=lambda x: x["Data/Ora"], reverse=True)
+    return model, notams[:20], connected, error_msg
+
 
 # =========================
-# UI
+# LOAD CONFIG
 # =========================
-st.title("🚁 ReADI Control Center")
+try:
+    cfg = safe_load_json(CONFIG_FILE)
+    ensure_config_has_keys(cfg)
+except Exception as e:
+    st.error(f"Errore config: {e}")
+    st.stop()
 
-col1, col2, col3 = st.columns([1,6,1])
+display_order = list(cfg.get("aliases", {}).keys())
+title = cfg.get("ui", {}).get("title", "ReADI Control Center")
+poll_seconds = int(cfg.get("poll_seconds", 3))
 
-with col1:
-    if st.button("🔄"):
-        st.session_state["data"] = fetch_data()
+# =========================
+# HEADER + REFRESH
+# =========================
+st.set_page_config(page_title=title, layout="wide")
+
+col_top_1, col_top_2 = st.columns([1, 6])
+with col_top_1:
+    if st.button("🔄 Aggiorna stato", use_container_width=True):
+        model, notams, connected, error_msg = fetch_control_center_data(cfg)
+        st.session_state["cc_model"] = model
+        st.session_state["cc_notams"] = notams
+        st.session_state["cc_connected"] = connected
+        st.session_state["cc_error"] = error_msg
+        st.session_state["cc_last_refresh"] = datetime.now()
         st.rerun()
 
-with col3:
-    st.image("aiview.png", width=70)
+with col_top_2:
+    st.markdown(f"# 🚁 {title}")
 
-if "data" not in st.session_state:
-    st.session_state["data"] = fetch_data()
+if "cc_model" not in st.session_state:
+    model, notams, connected, error_msg = fetch_control_center_data(cfg)
+    st.session_state["cc_model"] = model
+    st.session_state["cc_notams"] = notams
+    st.session_state["cc_connected"] = connected
+    st.session_state["cc_error"] = error_msg
+    st.session_state["cc_last_refresh"] = datetime.now()
 
-data = st.session_state["data"]
+model = st.session_state["cc_model"]
+notams = st.session_state["cc_notams"]
+connected = st.session_state["cc_connected"]
+error_msg = st.session_state["cc_error"]
+last_refresh = st.session_state["cc_last_refresh"]
+
+left, right = st.columns([6, 1])
+with left:
+    if connected:
+        st.caption("🟢 Connesso IMAP")
+    else:
+        st.caption("🔴 Disconnesso IMAP")
+
+    if error_msg:
+        st.warning(f"Errore IMAP: {error_msg}")
+
+    st.caption(f"Ultimo refresh: {last_refresh.strftime('%H:%M:%S')}")
+
+with right:
+    st.markdown(
+        "<div style='text-align:right; font-size:22px;'>🛰️</div>",
+        unsafe_allow_html=True
+    )
 
 # =========================
-# GRID
+# CARDS
 # =========================
-html = ""
+cards_html = ""
 
-for d in DRONI:
-    info = data[d]
+for drone in display_order:
+    info = model.get(drone, {
+        "state": "A_TERRA",
+        "last_event_text": "—",
+        "event_dt": None,
+        "timer_start_dt": None,
+    })
 
-    html += f"""
+    state = info["state"]
+    color = border_color(state)
+    label = status_label(state)
+    timer = compute_timer(info.get("timer_start_dt"))
+    last_event = info.get("last_event_text", "—")
+
+    cards_html += f"""
     <div style="
-        border:2px solid {color(info['state'])};
+        border:2px solid {color};
         border-radius:12px;
-        padding:12px;
+        padding:14px;
         background:#09111f;
         color:white;
+        min-height:165px;
     ">
-        <h3 style="text-align:center">{d}</h3>
+        <div style="font-size:18px; font-weight:700; margin-bottom:10px;">{drone}</div>
 
         <div style="
-            background:{color(info['state'])};
-            padding:10px;
+            background:{color};
+            color:#0b0f14;
+            padding:12px;
+            font-weight:800;
             text-align:center;
-            font-weight:bold;
-            color:black;
+            font-size:16px;
+            margin-bottom:14px;
         ">
-            {info['state']}
+            {label}
         </div>
 
-        <div style="font-size:12px; margin-top:8px;">
-            Timer: {timer(info['start'])}
+        <div style="font-size:13px; color:#c7d2e3; margin-bottom:6px;">
+            Timer: {timer}
         </div>
 
-        <div style="font-size:12px;">
-            {info['last']}
+        <div style="font-size:13px; color:#c7d2e3; font-style:italic;">
+            Ultimo evento: {last_event}
         </div>
     </div>
     """
 
-components.html(f"""
-<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">
-{html}
+full_cards_html = f"""
+<div style="
+display:grid;
+grid-template-columns: repeat(5, 1fr);
+gap:16px;
+margin-top:8px;
+margin-bottom:20px;
+">
+{cards_html}
 </div>
-""", height=700)
+"""
+
+components.html(full_cards_html, height=760, scrolling=True)
 
 # =========================
-# FOOTER
+# ULTIMO EVENTO GLOBALE
 # =========================
-st.markdown("""
-<div style="text-align:center;color:#888;margin-top:20px;">
-Developed by Roberto Innocenti - Powered by AiviewGroup
-</div>
-""", unsafe_allow_html=True)
+global_event = "—"
+latest_dt = None
+
+for drone, info in model.items():
+    event_dt = info.get("event_dt")
+    if event_dt and (latest_dt is None or event_dt > latest_dt):
+        latest_dt = event_dt
+        global_event = f"{drone} — {info.get('last_event_text', '—')}"
+
+st.markdown(
+    f"""
+    <div style="
+        text-align:center;
+        color:#d6e3f0;
+        font-style:italic;
+        margin:8px 0 18px 0;
+    ">
+        Ultimo evento globale: {global_event}
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+# =========================
+# NOTAM
+# =========================
+st.markdown("## NOTAM / Comunicazioni PIC")
+
+if not notams:
+    st.info("Nessuna comunicazione NOTAM trovata.")
+else:
+    st.dataframe(notams, use_container_width=True, hide_index=True)
