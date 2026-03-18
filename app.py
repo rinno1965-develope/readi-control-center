@@ -38,11 +38,8 @@ if not st.session_state["logged"]:
 # =========================
 # CONFIG
 # =========================
-def load_config():
-    with open("config.json", "r", encoding="utf-8") as f:
-        return json.load(f)
-
-cfg = load_config()
+with open("config.json", "r", encoding="utf-8") as f:
+    cfg = json.load(f)
 
 IMAP_SERVER = cfg["imap"]["server"]
 IMAP_PORT = cfg["imap"]["port"]
@@ -54,13 +51,16 @@ ALIASES = cfg["aliases"]
 DRONI = list(ALIASES.keys())
 
 # =========================
-# PARSER (TOP)
+# REGEX
 # =========================
 TAKEOFF_RE = re.compile(r"(take\s*off|takeoff)", re.IGNORECASE)
 LANDED_RE = re.compile(r"(landed|landing)", re.IGNORECASE)
 NOGO_RE = re.compile(r"(no\s*go\s*volo)", re.IGNORECASE)
 GOVOLO_RE = re.compile(r"(go\s*volo)", re.IGNORECASE)
 
+# =========================
+# UTILS
+# =========================
 def decode_subject(s):
     if not s:
         return ""
@@ -76,9 +76,6 @@ def decode_subject(s):
 def parse_subject(subject):
     s = subject.lower()
 
-    event = None
-    reason = ""
-
     if NOGO_RE.search(s):
         event = "NO_GO"
     elif GOVOLO_RE.search(s):
@@ -93,36 +90,36 @@ def parse_subject(subject):
     for drone, aliases in ALIASES.items():
         for a in aliases:
             if a.lower() in s:
-                return drone, event, reason
+                return drone, event
 
     return None
 
-# =========================
-# DATA FIX (NO BUG)
-# =========================
 def parse_date(msg):
+    raw = msg.get("Date")
+    if not raw:
+        return None
+
     try:
-        raw_date = msg.get("Date")
+        dt = parsedate_to_datetime(raw)
+    except:
+        return None
 
-        if not raw_date:
-            return None
+    if not dt:
+        return None
 
-        msg_dt = None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
 
-try:
-    raw_date = msg.get("Date")
+    return dt.astimezone()
 
-    if raw_date:
-        tmp_dt = parsedate_to_datetime(raw_date)
+def timer(start):
+    if not start:
+        return "--"
+    sec = int((datetime.now(timezone.utc) - start).total_seconds())
+    return f"{sec//60:02d}:{sec%60:02d}"
 
-        if tmp_dt:
-            if tmp_dt.tzinfo is None:
-                tmp_dt = tmp_dt.replace(tzinfo=timezone.utc)
-
-            msg_dt = tmp_dt.astimezone()
-
-except Exception:
-    msg_dt = None
+def color(s):
+    return "#ff3b3b" if s=="IN_VOLO" else "#f7c948" if s=="NO_GO" else "#39d98a"
 
 # =========================
 # FETCH MAIL
@@ -132,7 +129,6 @@ def fetch_data():
         d: {
             "state": "A_TERRA",
             "last": "—",
-            "dt": None,
             "start": None
         } for d in DRONI
     }
@@ -149,13 +145,13 @@ def fetch_data():
             _, msg_data = mail.fetch(num, "(RFC822)")
             msg = email.message_from_bytes(msg_data[0][1])
 
-            subj = decode_subject(msg.get("Subject"))
+            subj = decode_subject(msg.get("Subject", ""))
             parsed = parse_subject(subj)
 
             if not parsed:
                 continue
 
-            drone, event, _ = parsed
+            drone, event = parsed
             dt = parse_date(msg)
 
             t = dt.strftime("%H:%M:%S") if dt else "--:--"
@@ -202,15 +198,6 @@ if "data" not in st.session_state:
 
 data = st.session_state["data"]
 
-def timer(start):
-    if not start:
-        return "--"
-    sec = int((datetime.now(timezone.utc) - start).total_seconds())
-    return f"{sec//60:02d}:{sec%60:02d}"
-
-def color(s):
-    return "#ff3b3b" if s=="IN_VOLO" else "#f7c948" if s=="NO_GO" else "#39d98a"
-
 # =========================
 # CARDS
 # =========================
@@ -218,6 +205,7 @@ html = ""
 
 for d in DRONI:
     info = data[d]
+
     html += f"""
     <div style="
         border:2px solid {color(info['state'])};
