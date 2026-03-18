@@ -3,7 +3,6 @@ import os
 import re
 import imaplib
 import email
-import email.message
 from email.header import decode_header
 from email.utils import parsedate_to_datetime
 from datetime import datetime, timezone
@@ -18,7 +17,6 @@ import streamlit.components.v1 as components
 USERNAME = "admin"
 PASSWORD = "readi123"
 
-
 def login():
     st.title("🔐 Accesso ReADI Control Center")
     user = st.text_input("Username")
@@ -31,7 +29,6 @@ def login():
         else:
             st.error("Credenziali errate")
 
-
 if "logged" not in st.session_state:
     st.session_state["logged"] = False
 
@@ -43,15 +40,8 @@ if not st.session_state["logged"]:
 # =========================
 # CONFIG
 # =========================
-CONFIG_FILE = "config.json"
-
-
-def safe_load_json(path):
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-cfg = safe_load_json(CONFIG_FILE)
+with open("config.json", "r", encoding="utf-8") as f:
+    cfg = json.load(f)
 
 IMAP_SERVER = cfg["imap"]["server"]
 IMAP_PORT = cfg["imap"]["port"]
@@ -73,7 +63,7 @@ GOVOLO_RE = re.compile(r"(go\s*volo)", re.IGNORECASE)
 
 
 # =========================
-# UTILS
+# UTILS SAFE
 # =========================
 def decode_subject(s):
     if not s:
@@ -113,26 +103,22 @@ def parse_subject(subject):
     return None
 
 
-# 🔥 FIX DEFINITIVO TIMEZONE + NONE
+# 🔥 FIX DEFINITIVO (mai più replace su None)
 def parse_date(msg):
-    raw = msg.get("Date")
-
-    if not raw:
-        return None
-
     try:
+        raw = msg.get("Date")
+        if not raw:
+            return None
+
         dt = parsedate_to_datetime(raw)
-    except:
-        return None
+        if not dt:
+            return None
 
-    if dt is None:
-        return None
-
-    try:
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
 
         return dt.astimezone()
+
     except:
         return None
 
@@ -157,13 +143,15 @@ def color(s):
 
 
 # =========================
-# FETCH MAIL
+# FETCH MAIL + NOTAM
 # =========================
 def fetch_data():
     model = {
         d: {"state": "A_TERRA", "last": "—", "start": None}
         for d in DRONI
     }
+
+    notam_list = []
 
     try:
         mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
@@ -179,6 +167,11 @@ def fetch_data():
                 msg = email.message_from_bytes(msg_data[0][1])
 
                 subj = decode_subject(msg.get("Subject", ""))
+
+                # 👉 SALVA NOTAM
+                if "notam" in subj.lower():
+                    notam_list.append(subj)
+
                 parsed = parse_subject(subj)
 
                 if not parsed:
@@ -212,11 +205,11 @@ def fetch_data():
     except Exception as e:
         st.error(f"Errore IMAP: {e}")
 
-    return model
+    return model, notam_list
 
 
 # =========================
-# UI HEADER
+# UI
 # =========================
 col1, col2 = st.columns([1, 8])
 
@@ -226,16 +219,24 @@ with col1:
 with col2:
     st.title("ReADI Control Center AiviewGroup-OPS")
 
-
 if st.button("🔄 Aggiorna stato"):
-    st.session_state["data"] = fetch_data()
+    st.session_state["data"], st.session_state["notam"] = fetch_data()
     st.rerun()
 
-
 if "data" not in st.session_state:
-    st.session_state["data"] = fetch_data()
+    st.session_state["data"], st.session_state["notam"] = fetch_data()
 
 data = st.session_state["data"]
+notam = st.session_state["notam"]
+
+
+# =========================
+# NOTAM
+# =========================
+if notam:
+    st.warning("⚠️ NOTAM ATTIVI")
+    for n in notam[:5]:
+        st.write("•", n)
 
 
 # =========================
