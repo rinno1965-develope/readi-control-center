@@ -164,24 +164,39 @@ def fetch_data():
         for num in ids:
             try:
                 _, msg_data = mail.fetch(num, "(RFC822)")
+
+                if not msg_data or not msg_data[0]:
+                    continue
+
                 msg = email.message_from_bytes(msg_data[0][1])
 
-                subj = decode_subject(msg.get("Subject", ""))
+                # 🔥 SUBJECT SAFE
+                raw_subj = msg.get("Subject", "")
+                subj = decode_subject(raw_subj) if raw_subj else ""
 
-                # 👉 SALVA NOTAM
+                if not subj:
+                    continue
+
+                # 🔥 NOTAM
                 if "notam" in subj.lower():
                     notam_list.append(subj)
 
                 parsed = parse_subject(subj)
-
                 if not parsed:
                     continue
 
                 drone, event = parsed
-                dt = parse_date(msg)
+
+                # 🔥 DATE SAFE (QUI ERA IL PROBLEMA)
+                dt = None
+                try:
+                    dt = parse_date(msg)
+                except:
+                    dt = None
 
                 t = dt.strftime("%H:%M:%S") if dt else "--:--"
 
+                # 🔥 LOGICA EVENTI
                 if event == "TAKEOFF":
                     model[drone]["state"] = "IN_VOLO"
                     model[drone]["last"] = f"{t} TAKEOFF"
@@ -197,7 +212,8 @@ def fetch_data():
                     model[drone]["last"] = f"{t} NO GO"
                     model[drone]["start"] = None
 
-            except:
+            except Exception:
+                # 🔥 QUI SALVIAMO LA VITA
                 continue
 
         mail.logout()
@@ -206,7 +222,6 @@ def fetch_data():
         st.error(f"Errore IMAP: {e}")
 
     return model, notam_list
-
 
 # =========================
 # UI
