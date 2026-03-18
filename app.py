@@ -47,3 +47,26 @@ with col_top_3:
             st.image(logo_path, width=80)
         except Exception:
             pass
+
+# 🔄 BUTTON
+with col_top_1:
+    if st.button("🔄 Aggiorna stato", use_container_width=True):
+        model, notams, connected, error_msg = fetch_control_center_data(cfg)
+        st.session_state["cc_model"] = model
+        st.session_state["cc_notams"] = notams
+        st.session_state["cc_connected"] = connected
+        st.session_state["cc_error"] = error_msg
+        st.session_state["cc_last_refresh"] = datetime.now()
+        st.rerun()
+
+# 🧠 TITLE
+with col_top_2:
+    st.markdown(f"## {title}")
+
+# 🖼️ LOGO (SAFE)
+with col_top_3:
+    if logo_path:
+        try:
+            st.image(logo_path, width=80)
+        except Exception:
+            pass
