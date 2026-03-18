@@ -356,9 +356,10 @@ poll_seconds = int(cfg.get("poll_seconds", 3))
 # =========================
 st.set_page_config(page_title=title, layout="wide")
 
-col_top_1, col_top_2 = st.columns([1, 6])
+col_top_1, col_top_2, col_top_3 = st.columns([1, 6, 1])
+
 with col_top_1:
-    if st.button("🔄 Aggiorna stato", use_container_width=True):
+    if st.button("🔄", use_container_width=True):
         model, notams, connected, error_msg = fetch_control_center_data(cfg)
         st.session_state["cc_model"] = model
         st.session_state["cc_notams"] = notams
@@ -369,6 +370,9 @@ with col_top_1:
 
 with col_top_2:
     st.markdown(f"# 🚁 {title}")
+
+with col_top_3:
+    st.image("aiview.png", width=70)
 
 if "cc_model" not in st.session_state:
     model, notams, connected, error_msg = fetch_control_center_data(cfg)
@@ -503,3 +507,16 @@ if not notams:
     st.info("Nessuna comunicazione NOTAM trovata.")
 else:
     st.dataframe(notams, use_container_width=True, hide_index=True)
+st.markdown(
+    """
+    <div style="
+        text-align:center;
+        color:#8fa3bf;
+        font-size:12px;
+        margin-top:20px;
+    ">
+        Developed by Roberto Innocenti - Powered by AiviewGroup
+    </div>
+    """,
+    unsafe_allow_html=True
+)
