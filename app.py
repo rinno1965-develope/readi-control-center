@@ -1,72 +1,42 @@
 import streamlit as st
-import json
-import os
-import imaplib
-import email
-from email.header import decode_header
 
-st.set_page_config(layout="wide")
+st.set_page_config(page_title="ReADI Control Center", layout="wide")
 
-st.title("🚁 ReADI Control Center")
+# Login semplice con credenziali prese dai secrets
+def login():
+    st.title("🔐 Accesso ReADI Control Center")
+    user = st.text_input("Username")
+    pwd = st.text_input("Password", type="password")
 
-STATE_FILE = "state.json"
-
-def decode_subject(raw):
-    if not raw:
-        return ""
-    parts = decode_header(raw)
-    out = ""
-    for p, enc in parts:
-        if isinstance(p, bytes):
-            out += p.decode(enc or "utf-8", errors="ignore")
+    if st.button("Login"):
+        if (
+            user == st.secrets["auth"]["username"]
+            and pwd == st.secrets["auth"]["password"]
+        ):
+            st.session_state["logged"] = True
+            st.rerun()
         else:
-            out += p
-    return out
+            st.error("Credenziali errate")
 
-def read_mail():
-    try:
-        mail = imaplib.IMAP4_SSL("imap.gmail.com")
-        mail.login(EMAIL, PASSWORD)
-        mail.select("inbox")
+if "logged" not in st.session_state:
+    st.session_state["logged"] = False
 
-        status, messages = mail.search(None, "ALL")
-        ids = messages[0].split()[-10:]
+if not st.session_state["logged"]:
+    login()
+    st.stop()
 
-        drones_dict = {}
-
-        for i in ids:
-            _, msg_data = mail.fetch(i, "(RFC822)")
-            msg = email.message_from_bytes(msg_data[0][1])
-            subject = decode_subject(msg["Subject"])
-
-            if "ALPHA" in subject:
-                drones_dict["ALPHA"] = {
-                    "Drone": "ALPHA",
-                    "Stato": "Online",
-                    "Batteria": "78%"
-                }
-
-            if "BRAVO" in subject:
-                drones_dict["BRAVO"] = {
-                    "Drone": "BRAVO",
-                    "Stato": "Standby",
-                    "Batteria": "55%"
-                }
-
-        drones = list(drones_dict.values())
-        return drones
-
-    except:
-        return []
-
-drones = read_mail()
+# Dashboard base protetta
+st.title("🚁 ReADI Control Center")
+st.subheader("Accesso protetto attivo")
 
 col1, col2, col3 = st.columns(3)
-
-col1.metric("Droni", len(drones))
+col1.metric("Droni", "0")
 col2.metric("Stato", "ONLINE")
 col3.metric("Aggiornamento", "LIVE")
 
 st.divider()
 
-st.dataframe(drones if drones else [{"Status": "No data yet"}])
+st.dataframe([
+    {"Drone": "ALPHA", "Stato": "A TERRA", "Batteria": "—"},
+    {"Drone": "BRAVO", "Stato": "A TERRA", "Batteria": "—"},
+])
