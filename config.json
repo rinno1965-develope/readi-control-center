@@ -10,7 +10,7 @@
   "ui": {
     "title": "ReADI Control Center AiviewGroup-OPS",
     "lock_1366x768": false,
-    "logo_path": "assets/aiviewgroup.png"
+    "logo_path": "aiview.png"
   },
   "aliases": {
     "ALPHA": ["ALPHA"],
