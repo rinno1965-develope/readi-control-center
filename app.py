@@ -20,14 +20,7 @@ PASSWORD = "readi123"
 
 
 def login():
-    col1, col2 = st.columns([1, 8])
-
-with col1:
-    if LOGO and os.path.exists(LOGO):
-        st.image(LOGO, width=70)
-
-with col2:
-    st.title(TITLE)
+    st.title("🔐 Accesso ReADI Control Center")
     user = st.text_input("Username")
     pwd = st.text_input("Password", type="password")
 
@@ -349,8 +342,6 @@ def fetch_control_center_data(cfg: dict):
 # =========================
 try:
     cfg = safe_load_json(CONFIG_FILE)
-    TITLE = cfg.get("title", "ReADI Control Center")
-LOGO = cfg.get("logo_path", "")
     ensure_config_has_keys(cfg)
 except Exception as e:
     st.error(f"Errore config: {e}")
