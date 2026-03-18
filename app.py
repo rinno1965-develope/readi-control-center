@@ -102,16 +102,26 @@ def parse_subject(subject):
 # =========================
 def parse_date(msg):
     try:
-        msg_dt = parsedate_to_datetime(msg.get("Date"))
+        raw_date = msg.get("Date")
 
-        if msg_dt and msg_dt.tzinfo is None:
+        if not raw_date:
+            return None
+
+        msg_dt = parsedate_to_datetime(raw_date)
+
+        if not msg_dt:
+            return None
+
+        # se non ha timezone
+        if msg_dt.tzinfo is None:
             msg_dt = msg_dt.replace(tzinfo=timezone.utc)
 
-        if msg_dt:
-            msg_dt = msg_dt.astimezone()
+        # converte in locale
+        msg_dt = msg_dt.astimezone()
 
         return msg_dt
-    except:
+
+    except Exception:
         return None
 
 # =========================
