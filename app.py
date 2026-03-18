@@ -10,8 +10,8 @@ def login():
 
     if st.button("Login"):
         if (
-            user == st.secrets["auth"]["username"]
-            and pwd == st.secrets["auth"]["password"]
+            user == st.secrets["auth"]["admin"]
+            and pwd == st.secrets["auth"]["123"]
         ):
             st.session_state["logged"] = True
             st.rerun()
