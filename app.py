@@ -1,112 +1,105 @@
 import streamlit as st
+from datetime import datetime
 import random
-import time
 
-st.set_page_config(layout="wide")
-
-# ---------------- LOGIN ----------------
+# -------------------------
+# CONFIG LOGIN
+# -------------------------
 USERNAME = "admin"
 PASSWORD = "readi123"
 
-if "logged" not in st.session_state:
-    st.session_state.logged = False
-
+# -------------------------
+# LOGIN
+# -------------------------
 def login():
-    st.title("🔐 ReADI Control Center Login")
+    st.title("🔐 Accesso ReADI Control Center")
 
     user = st.text_input("Username")
     pwd = st.text_input("Password", type="password")
 
     if st.button("Login"):
         if user == USERNAME and pwd == PASSWORD:
-            st.session_state.logged = True
+            st.session_state["logged"] = True
             st.rerun()
         else:
             st.error("Credenziali errate")
 
-if not st.session_state.logged:
+# -------------------------
+# INIT SESSION
+# -------------------------
+if "logged" not in st.session_state:
+    st.session_state["logged"] = False
+
+if not st.session_state["logged"]:
     login()
     st.stop()
 
-# ---------------- DASHBOARD ----------------
+# -------------------------
+# UI HEADER
+# -------------------------
+st.set_page_config(layout="wide")
 
 st.title("🚁 ReADI Control Center")
 
-drones = [
-    "ALPHA","BRAVO","CHARLIE","DELTA","ECHO",
-    "FOXTROT","GOLF","HOTEL","INDIA","A35 ADDA NORD"
+# -------------------------
+# DATI DEMO (poi li colleghiamo ai tuoi veri)
+# -------------------------
+droni = [
+    "ALPHA", "BRAVO", "CHARLIE", "DELTA", "ECHO",
+    "FOXTROT", "GOLF", "HOTEL", "INDIA", "A35 ADDA NORD"
 ]
 
-# Stati possibili
-states = ["A_TERRA", "IN_VOLO", "NO_GO"]
+stati = ["A TERRA", "IN VOLO", "NO GO"]
 
-# Mantieni stato in sessione
-if "drone_states" not in st.session_state:
-    st.session_state.drone_states = {
-        d: {
-            "state": random.choice(states),
-            "last": time.strftime("%H:%M:%S")
-        } for d in drones
-    }
-
-# Simula cambi ogni refresh
-for d in drones:
-    if random.random() < 0.2:  # 20% cambia stato
-        st.session_state.drone_states[d]["state"] = random.choice(states)
-        st.session_state.drone_states[d]["last"] = time.strftime("%H:%M:%S")
-
-def get_color(state):
-    if state == "IN_VOLO":
+def get_color(stato):
+    if stato == "IN VOLO":
         return "#ff3b3b"
-    elif state == "NO_GO":
+    elif stato == "NO GO":
         return "#f7c948"
     else:
         return "#39d98a"
 
-def get_label(state):
-    return state.replace("_", " ")
-
-# Layout
+# -------------------------
+# GRID
+# -------------------------
 cols = st.columns(5)
 
-i = 0
-for drone in drones:
-    col = cols[i % 5]
-    with col:
-        info = st.session_state.drone_states[drone]
-        color = get_color(info["state"])
-        label = get_label(info["state"])
+for i, drone in enumerate(droni):
+    stato = random.choice(stati)
+    color = get_color(stato)
+    now = datetime.now().strftime("%H:%M:%S")
 
-        st.markdown(f"""
+    card_html = f"""
+    <div style="
+        border:2px solid {color};
+        border-radius:12px;
+        padding:15px;
+        margin-bottom:15px;
+        background:#0f172a;
+        color:white;
+    ">
+        <h3 style="text-align:center;">{drone}</h3>
+
         <div style="
-            border:2px solid {color};
-            padding:12px;
-            margin-bottom:12px;
-            border-radius:12px;
+            background:{color};
+            padding:10px;
+            border-radius:6px;
+            font-weight:bold;
+            color:black;
             text-align:center;
-            background-color:#0b0f14;
-            color:white;
         ">
-            <h4>{drone}</h4>
-
-            <div style="
-                background:{color};
-                padding:10px;
-                border-radius:6px;
-                font-weight:bold;
-                color:black;
-            ">
-                {label}
-            </div>
-
-            <div style="margin-top:8px; font-size:12px; color:#aaa;">
-                Last update: {info["last"]}
-            </div>
+            {stato}
         </div>
-        """, unsafe_allow_html=True)
 
-    i += 1
+        <div style="
+            margin-top:10px;
+            font-size:12px;
+            text-align:center;
+            color:#aaa;
+        ">
+            Last update: {now}
+        </div>
+    </div>
+    """
 
-# Auto refresh
-time.sleep(2)
-st.rerun()
+    cols[i % 5].markdown(card_html, unsafe_allow_html=True)
