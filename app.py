@@ -107,22 +107,22 @@ def parse_date(msg):
         if not raw_date:
             return None
 
-        msg_dt = parsedate_to_datetime(raw_date)
+        msg_dt = None
 
-        if not msg_dt:
-            return None
+try:
+    raw_date = msg.get("Date")
 
-        # se non ha timezone
-        if msg_dt.tzinfo is None:
-            msg_dt = msg_dt.replace(tzinfo=timezone.utc)
+    if raw_date:
+        tmp_dt = parsedate_to_datetime(raw_date)
 
-        # converte in locale
-        msg_dt = msg_dt.astimezone()
+        if tmp_dt:
+            if tmp_dt.tzinfo is None:
+                tmp_dt = tmp_dt.replace(tzinfo=timezone.utc)
 
-        return msg_dt
+            msg_dt = tmp_dt.astimezone()
 
-    except Exception:
-        return None
+except Exception:
+    msg_dt = None
 
 # =========================
 # FETCH MAIL
