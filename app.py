@@ -3,7 +3,7 @@ from datetime import datetime
 import random
 
 # -------------------------
-# CONFIG
+# CONFIG LOGIN
 # -------------------------
 USERNAME = "admin"
 PASSWORD = "readi123"
@@ -38,8 +38,7 @@ if not st.session_state["logged"]:
 # UI
 # -------------------------
 st.set_page_config(layout="wide")
-
-st.markdown("# 🚁 ReADI Control Center")
+st.title("🚁 ReADI Control Center")
 
 # -------------------------
 # DATI DEMO
@@ -60,7 +59,7 @@ def get_color(stato):
         return "#39d98a"
 
 # -------------------------
-# COSTRUZIONE HTML GRID
+# BUILD HTML
 # -------------------------
 cards_html = ""
 
@@ -102,9 +101,9 @@ for drone in droni:
     """
 
 # -------------------------
-# GRID CSS
+# GRID
 # -------------------------
-grid_html = f"""
+full_html = f"""
 <div style="
 display:grid;
 grid-template-columns: repeat(5, 1fr);
@@ -114,4 +113,5 @@ gap:20px;
 </div>
 """
 
-st.markdown(grid_html, unsafe_allow_html=True)
+# 🚀 QUESTO È IL FIX VERO
+st.html(full_html)
