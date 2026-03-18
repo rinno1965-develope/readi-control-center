@@ -20,13 +20,7 @@ PASSWORD = "readi123"
 
 
 def login():
-   col1, col2 = st.columns([1, 8])
-
-with col1:
-    st.image("aiview.png", width=70)
-
-with col2:
-    st.title("ReADI Control Center AiviewGroup-OPS")
+    st.title("🔐 Accesso ReADI Control Center")
     user = st.text_input("Username")
     pwd = st.text_input("Password", type="password")
 
