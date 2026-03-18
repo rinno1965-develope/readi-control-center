@@ -266,11 +266,13 @@ def fetch_control_center_data(cfg: dict):
 
             msg_dt = None
             try:
-                msg_dt = parsedate_to_datetime(msg.get("Date"))
-                if msg_dt.tzinfo is None:
-                    msg_dt = msg_dt.replace(tzinfo=timezone.utc)
-            except Exception:
-                msg_dt = None
+               msg_dt = parsedate_to_datetime(msg.get("Date"))
+
+            if msg_dt.tzinfo is None:
+                msg_dt = msg_dt.replace(tzinfo=timezone.utc)
+
+            # 🔥 FIX ITALIA
+            msg_dt = msg_dt.astimezone()
 
             if is_notam_subject(subj):
                 body = clean_body(get_text_body(msg))
