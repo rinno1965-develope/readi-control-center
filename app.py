@@ -3,7 +3,7 @@ from datetime import datetime
 import random
 
 # -------------------------
-# CONFIG LOGIN
+# CONFIG
 # -------------------------
 USERNAME = "admin"
 PASSWORD = "readi123"
@@ -25,7 +25,7 @@ def login():
             st.error("Credenziali errate")
 
 # -------------------------
-# INIT SESSION
+# SESSION
 # -------------------------
 if "logged" not in st.session_state:
     st.session_state["logged"] = False
@@ -35,14 +35,14 @@ if not st.session_state["logged"]:
     st.stop()
 
 # -------------------------
-# UI HEADER
+# UI
 # -------------------------
 st.set_page_config(layout="wide")
 
-st.title("🚁 ReADI Control Center")
+st.markdown("# 🚁 ReADI Control Center")
 
 # -------------------------
-# DATI DEMO (poi li colleghiamo ai tuoi veri)
+# DATI DEMO
 # -------------------------
 droni = [
     "ALPHA", "BRAVO", "CHARLIE", "DELTA", "ECHO",
@@ -60,21 +60,20 @@ def get_color(stato):
         return "#39d98a"
 
 # -------------------------
-# GRID
+# COSTRUZIONE HTML GRID
 # -------------------------
-cols = st.columns(5)
+cards_html = ""
 
-for i, drone in enumerate(droni):
+for drone in droni:
     stato = random.choice(stati)
     color = get_color(stato)
     now = datetime.now().strftime("%H:%M:%S")
 
-    card_html = f"""
+    cards_html += f"""
     <div style="
         border:2px solid {color};
         border-radius:12px;
         padding:15px;
-        margin-bottom:15px;
         background:#0f172a;
         color:white;
     ">
@@ -102,4 +101,17 @@ for i, drone in enumerate(droni):
     </div>
     """
 
-    cols[i % 5].markdown(card_html, unsafe_allow_html=True)
+# -------------------------
+# GRID CSS
+# -------------------------
+grid_html = f"""
+<div style="
+display:grid;
+grid-template-columns: repeat(5, 1fr);
+gap:20px;
+">
+{cards_html}
+</div>
+"""
+
+st.markdown(grid_html, unsafe_allow_html=True)
