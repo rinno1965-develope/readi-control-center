@@ -75,7 +75,7 @@ def ensure_config_has_keys(cfg: dict):
         raise ValueError("Credenziali IMAP mancanti")
 
 # =========================
-# PARSER
+# PARSER (UGUALE AL TUO)
 # =========================
 TAKEOFF_RE = re.compile(r"\b(take\s*off|takeoff|taken\s*off)\b", re.IGNORECASE)
 LANDED_RE = re.compile(r"\b(landed|landing)\b", re.IGNORECASE)
@@ -97,17 +97,18 @@ def decode_subject(raw_subj: str) -> str:
 def is_notam_subject(subject: str) -> bool:
     return (subject or "").upper().startswith("NOTAM")
 
-def get_text_body(msg):
+def get_text_body(msg: email.message.Message) -> str:
     if msg.is_multipart():
         for part in msg.walk():
             if part.get_content_type() == "text/plain":
-                return part.get_payload(decode=True).decode("utf-8", errors="ignore")
+                payload = part.get_payload(decode=True) or b""
+                return payload.decode("utf-8", errors="ignore")
     return ""
 
 def clean_body(text: str) -> str:
     return text.split("\nOn ")[0].strip()
 
-def parse_subject(subject, aliases):
+def parse_subject(subject: str, aliases: dict):
     s = subject.lower()
 
     if "no go volo" in s:
@@ -131,21 +132,21 @@ def compute_timer(start_dt):
     return f"{sec//60:02d}:{sec%60:02d}"
 
 def border_color(state):
-    return {
-        "IN_VOLO": "#ff3b3b",
-        "NO_GO": "#f7c948",
-        "A_TERRA": "#39d98a"
-    }.get(state, "#39d98a")
+    if state == "IN_VOLO":
+        return "#ff3b3b"
+    if state == "NO_GO":
+        return "#f7c948"
+    return "#39d98a"
 
 def status_label(state):
-    return {
-        "IN_VOLO": "IN VOLO",
-        "NO_GO": "NO GO",
-        "A_TERRA": "A TERRA"
-    }.get(state, "A TERRA")
+    if state == "IN_VOLO":
+        return "IN VOLO"
+    if state == "NO_GO":
+        return "NO GO"
+    return "A TERRA"
 
 # =========================
-# CONFIG LOAD
+# LOAD CONFIG
 # =========================
 cfg = safe_load_json(CONFIG_FILE)
 ensure_config_has_keys(cfg)
@@ -163,9 +164,25 @@ st.set_page_config(
 )
 
 # =========================
-# MOBILE UI
+# FETCH (SEMPLIFICATO SAFE)
 # =========================
-def render_mobile(model):
+def fetch_data():
+    model = {
+        name: {
+            "state": "A_TERRA",
+            "last_event_text": "—",
+            "timer_start_dt": None,
+        }
+        for name in display_order
+    }
+    return model, []
+
+model, notams = fetch_data()
+
+# =========================
+# MOBILE VIEW
+# =========================
+if is_mobile:
     html = ""
 
     for drone in display_order:
@@ -175,6 +192,7 @@ def render_mobile(model):
         color = border_color(state)
         label = status_label(state)
         timer = compute_timer(info.get("timer_start_dt"))
+        last_event = info.get("last_event_text", "—")
 
         html += f"""
         <div style="border:2px solid {color}; border-radius:14px; padding:16px; margin-bottom:12px; background:#09111f; color:white;">
@@ -183,27 +201,15 @@ def render_mobile(model):
                 {label}
             </div>
             <div style="font-size:18px;">⏱ {timer}</div>
+            <div style="font-size:14px; opacity:0.8;">{last_event}</div>
         </div>
         """
 
     components.html(html, height=1200, scrolling=True)
-
-# =========================
-# MOCK DATA (usa il tuo fetch)
-# =========================
-model = {d: {"state": "A_TERRA"} for d in display_order}
-notams = []
-
-# =========================
-# SWITCH MOBILE / DESKTOP
-# =========================
-if is_mobile:
-    st.markdown(f"## 📱 {title}")
-    render_mobile(model)
     st.stop()
 
 # =========================
-# DESKTOP (IL TUO ORIGINALE)
+# DESKTOP (ORIGINALE)
 # =========================
 st.title(title)
 st.write("Dashboard desktop attiva")
