@@ -173,11 +173,13 @@ def parse_subject(subject: str, aliases: dict):
 # =========================
 # HELPERS UI
 # =========================
+from zoneinfo import ZoneInfo
+
 def format_dt_for_card(dt_obj):
     if not dt_obj:
         return "—"
     try:
-        return dt_obj.astimezone().strftime("%H:%M:%S")
+        return dt_obj.astimezone(ZoneInfo("Europe/Rome")).strftime("%H:%M:%S")
     except Exception:
         return "—"
 
@@ -186,7 +188,7 @@ def format_dt_for_table(dt_obj):
     if not dt_obj:
         return ""
     try:
-        return dt_obj.astimezone().strftime("%d/%m %H:%M:%S")
+        return dt_obj.astimezone(ZoneInfo("Europe/Rome")).strftime("%d/%m %H:%M:%S")
     except Exception:
         return ""
 
