@@ -180,9 +180,22 @@ for drone in display_order:
 # =========================
 full_cards_html = f"""
 <style>
+@keyframes blink {{
+    0% {{ opacity: 1; }}
+    50% {{ opacity: 0.2; }}
+    100% {{ opacity: 1; }}
+}}
+
+.blink {{
+    animation: blink 1s infinite;
+}}
+
+/* ===== RESPONSIVE ===== */
 .grid {{
     display:grid;
     gap:16px;
+    margin-top:8px;
+    margin-bottom:20px;
     grid-template-columns: repeat(5, 1fr);
 }}
 
