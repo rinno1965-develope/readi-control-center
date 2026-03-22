@@ -135,46 +135,53 @@ model = fetch_data()
 # =========================
 # CARDS HTML
 # =========================
-cards_html = ""
+# ===== VERSIONE DEFINITIVA READI =====
+# (tuo codice + SOLO fix responsive)
 
-for drone in display_order:
-    state = model[drone]["state"]
+# --- TUTTO UGUALE FINO AL BLOCCO CARDS ---
 
-    color = "#39d98a"
-    label = "A TERRA"
+# SOSTITUISCI SOLO QUESTO BLOCCO ↓↓↓
 
-    if state == "IN_VOLO":
-        color = "#ff3b3b"
-        label = "IN VOLO"
-    elif state == "NO_GO":
-        color = "#f7c948"
-        label = "NO GO"
+full_cards_html = f"""
+<style>
+@keyframes blink {{
+    0% {{ opacity: 1; }}
+    50% {{ opacity: 0.2; }}
+    100% {{ opacity: 1; }}
+}}
 
-    cards_html += f"""
-    <div style="
-        border:2px solid {color};
-        border-radius:12px;
-        padding:14px;
-        background:#09111f;
-        color:white;
-    ">
-        <div style="font-size:18px; font-weight:700;">
-            {drone}
-        </div>
+.blink {{
+    animation: blink 1s infinite;
+}}
 
-        <div style="
-            background:{color};
-            color:#000;
-            padding:10px;
-            text-align:center;
-            font-weight:700;
-            margin-top:10px;
-        ">
-            {label}
-        </div>
-    </div>
-    """
+/* ===== GRID BASE ===== */
+.grid {{
+    display:grid;
+    gap:16px;
+    margin-top:8px;
+    margin-bottom:20px;
+    grid-template-columns: repeat(5, 1fr);
+}}
 
+/* ===== TABLET ===== */
+@media (max-width: 1100px) {{
+    .grid {{
+        grid-template-columns: repeat(3, 1fr);
+    }}
+}}
+
+/* ===== MOBILE ===== */
+@media (max-width: 700px) {{
+    .grid {{
+        grid-template-columns: 1fr;
+    }}
+}}
+</style>
+
+<div class="grid">
+{cards_html}
+</div>
+"""
 # =========================
 # 💣 RESPONSIVE FIX QUI
 # =========================
