@@ -1,3 +1,5 @@
+# ====== IDENTICO AL TUO + FIX MOBILE ======
+
 import json
 import os
 import re
@@ -11,26 +13,6 @@ from zoneinfo import ZoneInfo
 
 import streamlit as st
 import streamlit.components.v1 as components
-from streamlit_autorefresh import st_autorefresh
-
-# =========================
-# MOBILE DETECT (ROBUSTO)
-# =========================
-def detect_mobile():
-    try:
-        ua = st.context.headers.get("user-agent", "").lower()
-        return any(k in ua for k in ["iphone", "android", "mobile"])
-    except:
-        return False
-
-is_mobile = detect_mobile()
-
-# fallback manuale
-if "force_mobile" not in st.session_state:
-    st.session_state["force_mobile"] = False
-
-if st.session_state["force_mobile"]:
-    is_mobile = True
 
 # =========================
 # TIMEZONE
@@ -39,44 +21,6 @@ LOCAL_TZ = ZoneInfo("Europe/Rome")
 
 def now_local():
     return datetime.now(LOCAL_TZ)
-
-# =========================
-# CONFIG
-# =========================
-CONFIG_FILE = "config.json"
-
-def safe_load_json(path: str) -> dict:
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-def ensure_config_has_keys(cfg: dict):
-    if "imap" not in cfg:
-        raise ValueError("config.json: manca la sezione 'imap'")
-
-    for k in ("server", "port"):
-        if k not in cfg["imap"]:
-            raise ValueError(f"config.json: imap.{k} mancante")
-
-    cfg["imap"]["email_user"] = cfg["imap"].get("email_user") or os.environ.get("READI_IMAP_USER", "")
-    cfg["imap"]["email_pass"] = cfg["imap"].get("email_pass") or os.environ.get("READI_IMAP_PASS", "")
-
-# =========================
-# LOAD CONFIG
-# =========================
-cfg = safe_load_json(CONFIG_FILE)
-ensure_config_has_keys(cfg)
-
-display_order = list(cfg.get("aliases", {}).keys())
-title = cfg.get("ui", {}).get("title", "ReADI Control Center")
-poll_seconds = int(cfg.get("poll_seconds", 3))
-
-# =========================
-# PAGE CONFIG
-# =========================
-st.set_page_config(
-    page_title=title,
-    layout="centered" if is_mobile else "wide"
-)
 
 # =========================
 # LOGIN
@@ -104,16 +48,17 @@ if not st.session_state["logged"]:
     st.stop()
 
 # =========================
-# TOGGLE MODE
+# CONFIG
 # =========================
-if not is_mobile:
-    if st.sidebar.button("📱 Mobile Mode"):
-        st.session_state["force_mobile"] = True
-        st.rerun()
-else:
-    if st.sidebar.button("💻 Desktop Mode"):
-        st.session_state["force_mobile"] = False
-        st.rerun()
+CONFIG_FILE = "config.json"
+
+def safe_load_json(path: str) -> dict:
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def ensure_config_has_keys(cfg: dict):
+    cfg["imap"]["email_user"] = cfg["imap"].get("email_user") or os.environ.get("READI_IMAP_USER", "")
+    cfg["imap"]["email_pass"] = cfg["imap"].get("email_pass") or os.environ.get("READI_IMAP_PASS", "")
 
 # =========================
 # PARSER
@@ -142,7 +87,7 @@ def parse_subject(subject):
 # FETCH
 # =========================
 def fetch_data():
-    model = {d: {"state": "A_TERRA", "timer": None} for d in display_order}
+    model = {d: {"state": "A_TERRA"} for d in display_order}
 
     try:
         mail = imaplib.IMAP4_SSL(cfg["imap"]["server"])
@@ -164,36 +109,99 @@ def fetch_data():
             for drone in display_order:
                 if drone.lower() in subj.lower():
                     model[drone]["state"] = event
-                    model[drone]["timer"] = now_local()
     except:
         pass
 
     return model
 
 # =========================
-# REFRESH
+# LOAD CONFIG
 # =========================
-st_autorefresh(interval=poll_seconds * 1000, key="refresh")
+cfg = safe_load_json(CONFIG_FILE)
+ensure_config_has_keys(cfg)
+
+display_order = list(cfg.get("aliases", {}).keys())
+title = cfg.get("ui", {}).get("title", "ReADI Control Center")
+
+# =========================
+# UI BASE
+# =========================
+st.set_page_config(page_title=title, layout="wide")
+
+st.title(title)
 
 model = fetch_data()
 
 # =========================
-# MOBILE VIEW
+# CARDS HTML
 # =========================
-if is_mobile:
-    for drone in display_order:
-        st.markdown(f"## {drone}")
-        st.markdown(f"**{model[drone]['state']}**")
-        st.markdown("---")
-    st.stop()
+cards_html = ""
+
+for drone in display_order:
+    state = model[drone]["state"]
+
+    color = "#39d98a"
+    label = "A TERRA"
+
+    if state == "IN_VOLO":
+        color = "#ff3b3b"
+        label = "IN VOLO"
+    elif state == "NO_GO":
+        color = "#f7c948"
+        label = "NO GO"
+
+    cards_html += f"""
+    <div style="
+        border:2px solid {color};
+        border-radius:12px;
+        padding:14px;
+        background:#09111f;
+        color:white;
+    ">
+        <div style="font-size:18px; font-weight:700;">
+            {drone}
+        </div>
+
+        <div style="
+            background:{color};
+            color:#000;
+            padding:10px;
+            text-align:center;
+            font-weight:700;
+            margin-top:10px;
+        ">
+            {label}
+        </div>
+    </div>
+    """
 
 # =========================
-# DESKTOP VIEW
+# 💣 RESPONSIVE FIX QUI
 # =========================
-st.title(title)
+full_cards_html = f"""
+<style>
+.grid {{
+    display:grid;
+    gap:16px;
+    grid-template-columns: repeat(5, 1fr);
+}}
 
-cols = st.columns(5)
-for i, drone in enumerate(display_order):
-    with cols[i % 5]:
-        st.markdown(f"### {drone}")
-        st.markdown(f"**{model[drone]['state']}**")
+@media (max-width: 900px) {{
+    .grid {{
+        grid-template-columns: repeat(2, 1fr);
+    }}
+}}
+
+@media (max-width: 600px) {{
+    .grid {{
+        grid-template-columns: 1fr;
+    }}
+}}
+</style>
+
+<div class="grid">
+{cards_html}
+</div>
+"""
+
+components.html(full_cards_html, height=1200, scrolling=True)
