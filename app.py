@@ -18,9 +18,15 @@ from streamlit_autorefresh import st_autorefresh
 # MOBILE DETECT
 # =========================
 query_params = st.query_params
-view_param = query_params.get("view", "")
-if isinstance(view_param, list):
-    view_param = view_param[0] if view_param else ""
+
+view_param = ""
+if "view" in query_params:
+    val = query_params["view"]
+    if isinstance(val, list):
+        view_param = val[0]
+    else:
+        view_param = val
+
 is_mobile = str(view_param).strip().lower() == "mobile"
 
 
